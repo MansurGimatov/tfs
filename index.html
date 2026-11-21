@@ -379,7 +379,7 @@
     <!-- СЮЖЕТНАЯ ЗАСТАВКА «МОНОЛИТНЫЙ ТРЕХСТРОЧНЫЙ СИНТЕЗ» С КЛИКОМ ПО ЭКРАНУ -->
     <div id="intro-overlay" onclick="initializeSystem()" style="cursor: pointer; background-color: black !important;">
         <!-- Проверьте: на диске папка должна называться movies (или замените на video/intro_bg.mp4) -->
-        <video id="intro-video" class="video-background" src="movies/intro_bg.mp4" autoplay muted playsinline></video>
+        <video id="intro-video" class="video-background" src="movies/intro_bg.mp4" autoplay muted loop playsinline webkit-playsinline preload="auto"></video>
         <div class="video-overlay-mask"></div>
         
         <div id="intro-ui" style="opacity: 0; transition: opacity 1.5s ease; display: flex; flex-direction: column; align-items: center; z-index: 1; text-align: center; pointer-events: none; width: 100%; max-width: 1000px; padding: 0 20px; box-sizing: border-box;">
