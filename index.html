@@ -909,12 +909,9 @@
                 }
             }, 4900);
         }
-
-        // СУПЕРУСТОЙЧИВАЯ ФУНКЦИЯ СБОРКИ ЭКРАНА КНИГИ
         function loadParagraph(paragraphId, element) {
             const mainContent = document.getElementById('main-content');
             const data = bookRegistry[paragraphId];
-
             if (data) {
                 mainContent.innerHTML = `
                     <div class="book-chapter">${data.chapter}</div>
@@ -922,35 +919,33 @@
                     <h4 class="book-title">${data.title}</h4>
                     <div class="book-body-text">${data.text}</div>
                 `;
-                
                 document.querySelectorAll('.nav-link').forEach(btn => btn.classList.remove('active'));
-                
                 if (element) {
                     element.classList.add('active');
                 } else {
                     const firstBtn = document.querySelector('.nav-link');
                     if (firstBtn) firstBtn.classList.add('active');
                 }
-                
-                const wrapper = document.getElementById('content-wrapper');
-                if (wrapper) wrapper.scrollTop = 0;
+                 const wrapper = document.getElementById('content-wrapper');
+                if (wrapper) {
+                    wrapper.scrollTop = 0;
+                    wrapper.setAttribute('tabindex', '-1');
+                    wrapper.style.outline = 'none';
+                    wrapper.focus({ preventScroll: true });
+                }
             }
         }
-
-        // ФУНКЦИЯ МГНОВЕННОГО ВХОДА В КНИГУ ПО КЛИКУ ПО ЭКРАНУ
         function initializeSystem() {
-            // Разрешаем вход только тогда, когда фильм закончился и название горит на экране
             if (!isVideoEnded) return; 
-
-            // Аппаратно включаем отображение правой текстовой шины контента
             const wrapper = document.getElementById('content-wrapper');
-            if (wrapper) wrapper.style.display = 'flex';
-
-            // Мягко растворяем заставку
+            if (wrapper) {
+                wrapper.style.display = 'flex';
+                wrapper.setAttribute('tabindex', '-1');
+                wrapper.style.outline = 'none';
+            }
             document.getElementById('intro-overlay').classList.add('system-ready');
-            
-            // Выводим текст Первой Главы строго в момент открытия шлюза
             loadParagraph('pbeg');
+            if (wrapper) wrapper.focus({ preventScroll: true });
         }
 
         // ПЕРВИЧНЫЙ СИСТЕМНЫЙ ТАКТ: жесткий файрвол от промигивания текста
@@ -981,20 +976,11 @@
             });
         });
     </script>
-    <!-- ГИБРИДНЫЙ ПЕРЕВОДЧИК RU / EN (РАБОТАЕТ И С ВИДЖЕТОМ GOOGLE, И В ОБХОД БЛОКИРОВОК) -->
+    <!-- БЫСТРЫЙ АВТОМАТИЧЕСКИЙ ПЕРЕВОДЧИК RU / EN (БЕЗ БЛОКИРОВОК И ЗАДЕРЖЕК) -->
     <script>
         let currentBookLang = 'ru';
         const originalTextCache = new WeakMap();
-
-        function googleTranslateElementInit() {
-            if (window.google && google.translate) {
-                new google.translate.TranslateElement({
-                    pageLanguage: 'ru',
-                    includedLanguages: 'en,ru',
-                    autoDisplay: false
-                }, 'google_translate_element');
-            }
-        }
+        const translatedCache = new Map();
 
         function getTranslatableNodes(root) {
             const nodes = [];
@@ -1014,22 +1000,41 @@
             return nodes;
         }
 
-        async function translateChunk(text) {
-            try {
-                const url = 'https://googleapis.com' + encodeURIComponent(text);
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('Network error');
-                const data = await res.json();
-                return data[0].map(item => item[0]).join('');
-            } catch (e) {
-                const fallbackUrl = 'https://translated.net' + encodeURIComponent(text.slice(0, 480)) + '&langpair=ru|en';
-                const res2 = await fetch(fallbackUrl);
-                const data2 = await res2.json();
-                return data2.responseData.translatedText || text;
+        async function translateText(text) {
+            const trimmed = text.trim();
+            if (!trimmed || !/[а-яА-ЯёЁ]/.test(trimmed)) return text;
+            if (translatedCache.has(trimmed)) {
+                return text.replace(trimmed, translatedCache.get(trimmed));
             }
-        }
 
-        async function translatePageFallback(targetLang) {
+            try {
+                const url = 'https://googleapis.com' + encodeURIComponent(trimmed);
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                const firstBlock = Array.isArray(data) ? data.at(0) : null;
+                if (Array.isArray(firstBlock)) {
+                    const result = firstBlock.map(part => Array.isArray(part) ? part.at(0) : '').join('');
+                    if (result) {
+                        translatedCache.set(trimmed, result);
+                        return text.replace(trimmed, result);
+                    }
+                }
+            } catch (e) {
+                try {
+                    const fallbackUrl = 'https://translated.net' + encodeURIComponent(trimmed.slice(0, 480)) + '&langpair=ru|en';
+                    const res2 = await fetch(fallbackUrl);
+                    const data2 = await res2.json();
+                    const result2 = data2 && data2.responseData ? data2.responseData.translatedText : '';
+                    if (result2) {
+                        translatedCache.set(trimmed, result2);
+                        return text.replace(trimmed, result2);
+                    }
+                } catch (e2) {}
+            }
+            return text;
+        }
+        async function applyLanguage(targetLang) {
             const nodes = getTranslatableNodes(document.body);
             if (targetLang === 'ru') {
                 nodes.forEach(node => {
@@ -1039,43 +1044,31 @@
                 });
                 return;
             }
-
             const btnEn = document.getElementById('btn-en');
-            const oldLabel = btnEn.textContent;
-            btnEn.textContent = 'EN...';
-
-            for (const node of nodes) {
+            if (btnEn) btnEn.textContent = 'EN...';
+            await Promise.all(nodes.map(async (node) => {
                 if (!originalTextCache.has(node)) {
                     originalTextCache.set(node, node.nodeValue);
                 }
                 const src = originalTextCache.get(node);
-                if (/[а-яА-ЯёЁ]/.test(src)) {
-                    node.nodeValue = await translateChunk(src);
-                }
-            }
-            btnEn.textContent = oldLabel;
+                node.nodeValue = await translateText(src);
+            }));
+            if (btnEn) btnEn.textContent = 'EN';
         }
-
         function changeLanguage(lang) {
             currentBookLang = lang;
-            document.getElementById('btn-ru').classList.toggle('active', lang === 'ru');
-            document.getElementById('btn-en').classList.toggle('active', lang === 'en');
-
-            const select = document.querySelector('.goog-te-combo');
-            if (select) {
-                select.value = lang;
-                select.dispatchEvent(new Event('change'));
-            } else {
-                translatePageFallback(lang);
-            }
+            const btnRu = document.getElementById('btn-ru');
+            const btnEn = document.getElementById('btn-en');
+            if (btnRu) btnRu.classList.toggle('active', lang === 'ru');
+            if (btnEn) btnEn.classList.toggle('active', lang === 'en');
+            applyLanguage(lang);
         }
-
         const originalLoadParagraph = window.loadParagraph;
         if (typeof originalLoadParagraph === 'function') {
             window.loadParagraph = function(id, btn) {
                 originalLoadParagraph(id, btn);
-                if (currentBookLang === 'en' && !document.querySelector('.goog-te-combo')) {
-                    setTimeout(() => translatePageFallback('en'), 50);
+                if (currentBookLang === 'en') {
+                    applyLanguage('en');
                 }
             };
         }
