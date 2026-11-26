@@ -329,6 +329,11 @@
                 width: 85%;
                 max-width: 320px;
                 height: 100vh;
+                height: 100dvh;
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                overscroll-behavior: contain;
+                padding-bottom: 60px;
                 z-index: 4500;
                 transition: left 0.3s ease;
                 box-shadow: 10px 0 30px rgba(0, 0, 0, 0.9);
@@ -976,7 +981,7 @@
             });
         });
     </script>
-    <!-- ФИНАЛЬНЫЙ КАСКАДНЫЙ ПЕРЕВОДЧИК RU / EN (АВТО-ВЫБОР БЫСТРОГО ЗЕРКАЛА + БЕЗЛИМИТ + СТРЕЛКИ) -->
+    <!-- ПАКЕТНЫЙ КАСКАДНЫЙ ПЕРЕВОДЧИК RU / EN (БЕЗ БЛОКИРОВОК ПО IP + ТОЧНОЕ ОГЛАВЛЕНИЕ) -->
     <script>
         let currentBookLang = 'ru';
         const originalTextCache = new WeakMap();
@@ -1002,21 +1007,12 @@
             return nodes;
         }
 
-        function splitIntoChunks(text, maxLen = 450) {
-            if (text.length <= maxLen) return [text];
-            const sentences = text.match(/[^.!?]+[.!?]*\s*/g) || [text];
-            const chunks = [];
-            let current = '';
-            for (const s of sentences) {
-                if ((current + s).length > maxLen && current) {
-                    chunks.push(current.trim());
-                    current = s;
-                } else {
-                    current += s;
-                }
-            }
-            if (current.trim()) chunks.push(current.trim());
-            return chunks;
+        function translateHeadingFast(trimmed) {
+            if (/^Предисловие$/i.test(trimmed)) return 'Preface';
+            if (/^Заключение$/i.test(trimmed)) return 'Conclusion';
+            if (/^Глава\s+([\d.]+):?$/i.test(trimmed)) return trimmed.replace(/^Глава/i, 'Chapter').replace(/:$/, '');
+            if (/^Раздел\s+([\d.]+)\.?$/i.test(trimmed)) return trimmed.replace(/^Раздел/i, 'Section').replace(/\.$/, '');
+            return null;
         }
 
         function isValidTranslation(res, src) {
@@ -1028,102 +1024,123 @@
             return res.trim() !== src.trim();
         }
 
-        async function fetchWithTimeout(url, ms = 3500) {
+        async function fetchWithTimeout(url, options = {}, ms = 4500) {
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), ms);
             try {
-                return await fetch(url, { signal: controller.signal });
+                return await fetch(url, { ...options, signal: controller.signal });
             } finally {
                 clearTimeout(timer);
             }
         }
 
-        // Список независимых движков перевода (от безлимитных до резервных)
         const translationEngines = [
-            // 0. Прямой Google API (мгновенно работает для читателей с Запада)
-            async (enc) => {
-                const u = atob('aHR0cHM6Ly90cmFuc2xhdGUuZ29vZ2xlYXBpcy5jb20vdHJhbnNsYXRlX2Evc2luZ2xlP2NsaWVudD1ndHgmc2w9cnUmdGw9ZW4mZHQ9dCZxPQ==') + enc;
+            // 0. Прямой Google API (работает с Запада и через часть провайдеров)
+            async (text) => {
+                const u = atob('aHR0cHM6Ly90cmFuc2xhdGUuZ29vZ2xlYXBpcy5jb20vdHJhbnNsYXRlX2Evc2luZ2xlP2NsaWVudD1ndHgmc2w9cnUmdGw9ZW4mZHQ9dCZxPQ==') + encodeURIComponent(text);
                 const r = await fetchWithTimeout(u);
                 if (!r.ok) return '';
                 const d = await r.json();
                 const block = Array.isArray(d) ? d.at(0) : null;
                 return Array.isArray(block) ? block.map(p => Array.isArray(p) ? p.at(0) : '').join('') : '';
             },
-            // 1. Зеркало Lingva #1 (безлимитный Google Translate)
-            async (enc) => {
-                const r = await fetchWithTimeout(atob('aHR0cHM6Ly9saW5ndmEubWwvYXBpL3YxL3J1L2VuLw==') + enc);
+            // 1. Зеркало Lingva #1
+            async (text) => {
+                const r = await fetchWithTimeout(atob('aHR0cHM6Ly9saW5ndmEubWwvYXBpL3YxL3J1L2VuLw==') + encodeURIComponent(text));
                 if (!r.ok) return '';
                 const d = await r.json();
                 return d && d.translation ? d.translation : '';
             },
-            // 2. Зеркало Lingva #2 (безлимитный Google Translate)
-            async (enc) => {
-                const r = await fetchWithTimeout(atob('aHR0cHM6Ly9saW5ndmEudGhlZGF2aWRkb2UuY29tL2FwaS92MS9ydS9lbi8=') + enc);
+            // 2. Зеркало Lingva #2
+            async (text) => {
+                const r = await fetchWithTimeout(atob('aHR0cHM6Ly9saW5ndmEudGhlZGF2aWRkb2UuY29tL2FwaS92MS9ydS9lbi8=') + encodeURIComponent(text));
                 if (!r.ok) return '';
                 const d = await r.json();
                 return d && d.translation ? d.translation : '';
             },
-            // 3. Зеркало Lingva #3 (безлимитный Google Translate)
-            async (enc) => {
-                const r = await fetchWithTimeout(atob('aHR0cHM6Ly90cmFuc2xhdGUucGxhdXNpYmlsaXR5LmNsb3VkL2FwaS92MS9ydS9lbi8=') + enc);
+            // 3. Зеркало Lingva #3
+            async (text) => {
+                const r = await fetchWithTimeout(atob('aHR0cHM6Ly90cmFuc2xhdGUucGxhdXNpYmlsaXR5LmNsb3VkL2FwaS92MS9ydS9lbi8=') + encodeURIComponent(text));
                 if (!r.ok) return '';
                 const d = await r.json();
                 return d && d.translation ? d.translation : '';
             },
-            // 4. MyMemory с расширенным лимитом 50 000 символов/сутки на читателя
-            async (enc) => {
-                const u = atob('aHR0cHM6Ly9hcGkubXltZW1vcnkudHJhbnNsYXRlZC5uZXQvZ2V0P3E9') + enc + '&langpair=ru|en&de=tfs.book.reader@gmail.com';
-                const r = await fetchWithTimeout(u, 5000);
+            // 4. MyMemory с расширенным лимитом 50 000 символов/сутки
+            async (text) => {
+                const u = atob('aHR0cHM6Ly9hcGkubXltZW1vcnkudHJhbnNsYXRlZC5uZXQvZ2V0P3E9') + encodeURIComponent(text.slice(0, 480)) + '&langpair=ru|en&de=tfs.book.reader@gmail.com';
+                const r = await fetchWithTimeout(u, {}, 5500);
                 if (!r.ok) return '';
                 const d = await r.json();
                 return d && d.responseData ? d.responseData.translatedText : '';
             }
         ];
 
-        async function translateChunk(chunk) {
-            const enc = encodeURIComponent(chunk);
-
-            // Сначала пробуем уже найденный быстрый движок
+        async function queryEngines(text) {
             if (preferredEngineIndex >= 0) {
                 try {
-                    const fastRes = await translationEngines.at(preferredEngineIndex)(enc);
-                    if (isValidTranslation(fastRes, chunk)) return fastRes;
+                    const fastRes = await translationEngines.at(preferredEngineIndex)(text);
+                    if (isValidTranslation(fastRes, text)) return fastRes;
                 } catch (e) {}
-                preferredEngineIndex = -1; // Если вдруг перестал отвечать, ищем другой
+                preferredEngineIndex = -1;
             }
-
-            // Перебираем движки и запоминаем первый сработавший
             for (let i = 0; i < translationEngines.length; i++) {
                 try {
-                    const res = await translationEngines.at(i)(enc);
-                    if (isValidTranslation(res, chunk)) {
+                    const res = await translationEngines.at(i)(text);
+                    if (isValidTranslation(res, text)) {
                         preferredEngineIndex = i;
                         return res;
                     }
                 } catch (e) {}
             }
-
-            return chunk;
+            return '';
         }
 
-        async function translateText(text) {
-            const trimmed = text.trim();
-            if (!trimmed || !/[а-яА-ЯёЁ]/.test(trimmed)) return text;
-            if (translatedCache.has(trimmed)) {
-                return text.replace(trimmed, translatedCache.get(trimmed));
+        // Пакетный перевод: объединяем короткие строки в 1 запрос через |||, чтобы не ловить бан по частоте!
+        async function translateNodesBatch(nodesToTranslate) {
+            const sep = ' ||| ';
+            let batch = [];
+            let batchLen = 0;
+
+            async function flushBatch() {
+                if (batch.length === 0) return;
+                const combined = batch.map(item => item.trimmed).join(sep);
+                const translatedCombined = await queryEngines(combined);
+                if (translatedCombined) {
+                    const parts = translatedCombined.split(/\s*\|\|\|\s*/);
+                    if (parts.length === batch.length) {
+                        batch.forEach((item, idx) => {
+                            const tr = parts.at(idx).trim();
+                            if (tr) {
+                                translatedCache.set(item.trimmed, tr);
+                                item.node.nodeValue = item.src.replace(item.trimmed, tr);
+                            }
+                        });
+                        batch = [];
+                        batchLen = 0;
+                        return;
+                    }
+                }
+                // Если разделитель склеился, переводим элементы пакета по очереди с паузой
+                for (const item of batch) {
+                    const singleTr = await queryEngines(item.trimmed);
+                    if (singleTr) {
+                        translatedCache.set(item.trimmed, singleTr);
+                        item.node.nodeValue = item.src.replace(item.trimmed, singleTr);
+                    }
+                }
+                batch = [];
+                batchLen = 0;
             }
 
-            const chunks = splitIntoChunks(trimmed, 450);
-            const translatedParts = [];
-            for (const ch of chunks) {
-                translatedParts.push(await translateChunk(ch));
+            for (const item of nodesToTranslate) {
+                if (batchLen + item.trimmed.length > 420 && batch.length > 0) {
+                    await flushBatch();
+                    await new Promise(r => setTimeout(r, 150)); // Щадящая пауза для защиты от бана IP
+                }
+                batch.push(item);
+                batchLen += item.trimmed.length + sep.length;
             }
-            const fullTranslated = translatedParts.join(' ');
-            if (isValidTranslation(fullTranslated, trimmed)) {
-                translatedCache.set(trimmed, fullTranslated);
-                return text.replace(trimmed, fullTranslated);
-            }
-            return text;
+            await flushBatch();
         }
 
         async function applyLanguage(targetLang) {
@@ -1144,15 +1161,32 @@
             if (btnEn) btnEn.textContent = 'EN...';
 
             try {
-                await Promise.all(nodes.map(async (node) => {
+                const pending = [];
+                for (const node of nodes) {
                     if (!originalTextCache.has(node)) {
                         originalTextCache.set(node, node.nodeValue);
                     }
                     const src = originalTextCache.get(node);
-                    if (/[а-яА-ЯёЁ]/.test(src)) {
-                        node.nodeValue = await translateText(src);
+                    const trimmed = src.trim();
+                    if (!trimmed || !/[а-яА-ЯёЁ]/.test(trimmed)) continue;
+
+                    const fastHeading = translateHeadingFast(trimmed);
+                    if (fastHeading) {
+                        node.nodeValue = src.replace(trimmed, fastHeading);
+                        continue;
                     }
-                }));
+
+                    if (translatedCache.has(trimmed)) {
+                        node.nodeValue = src.replace(trimmed, translatedCache.get(trimmed));
+                        continue;
+                    }
+
+                    pending.push({ node, src, trimmed });
+                }
+
+                if (pending.length > 0) {
+                    await translateNodesBatch(pending);
+                }
             } finally {
                 isTranslating = false;
                 if (btnEn) btnEn.textContent = 'EN';
@@ -1168,7 +1202,6 @@
             applyLanguage(lang);
         }
 
-        // Автоматический перевод при любой смене текста главы во всех браузерах
         window.addEventListener('DOMContentLoaded', function() {
             const mainContent = document.getElementById('main-content');
             if (mainContent) {
@@ -1181,7 +1214,6 @@
             }
         });
 
-        // ПРОКРУТКА СТРЕЛКАМИ ПРИ ЛЮБОМ ФОКУСЕ И ПОСЛЕ ЛЮБЫХ КЛИКОВ
         document.addEventListener('keydown', function(e) {
             const wrapper = document.getElementById('content-wrapper');
             if (!wrapper || wrapper.style.display === 'none') return;
@@ -1203,6 +1235,6 @@
             }
         });
     </script>
-    <script src="https://google.com" async></script>
+	<script src="https://google.com" async></script>
 </body>
 </html>
