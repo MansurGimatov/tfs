@@ -976,12 +976,11 @@
             });
         });
     </script>
-    <!-- РАБОЧИЙ JSONP-ПЕРЕВОДЧИК RU / EN + ЖЕЛЕЗОБЕТОННЫЕ СТРЕЛКИ -->
+    <!-- РАБОЧИЙ ПЕРЕВОДЧИК RU / EN (ЗАЩИЩЕН ОТ ОБРЕЗАНИЯ ССЫЛОК ПРИ КОПИРОВАНИИ) -->
     <script>
         let currentBookLang = 'ru';
         const originalTextCache = new WeakMap();
         const translatedCache = new Map();
-        let jsonpCounter = 0;
 
         function getTranslatableNodes(root) {
             const nodes = [];
@@ -1001,7 +1000,7 @@
             return nodes;
         }
 
-        function splitIntoChunks(text, maxLen = 400) {
+        function splitIntoChunks(text, maxLen = 450) {
             if (text.length <= maxLen) return [text];
             const sentences = text.match(/[^.!?]+[.!?]*\s*/g) || [text];
             const chunks = [];
@@ -1018,35 +1017,20 @@
             return chunks;
         }
 
-        function translateViaJSONP(chunk) {
-            return new Promise((resolve) => {
-                const cbName = '__tr_cb_' + (++jsonpCounter) + '_' + Date.now();
-                const script = document.createElement('script');
-                const timer = setTimeout(() => {
-                    cleanup();
-                    resolve(chunk);
-                }, 7000);
-
-                function cleanup() {
-                    clearTimeout(timer);
-                    delete window[cbName];
-                    if (script.parentNode) script.parentNode.removeChild(script);
+        async function translateChunk(chunk) {
+            // Собираем адрес по частям, чтобы браузер/чат не обрезал URL при копировании
+            const base = ['https:', '', 'api.mymemory.translated.net', 'get'].join('/');
+            const query = '?q=' + encodeURIComponent(chunk) + '&langpair=ru|en';
+            try {
+                const res = await fetch(base + query);
+                const data = await res.json();
+                if (data && data.responseData && data.responseData.translatedText) {
+                    return data.responseData.translatedText;
                 }
-
-                window[cbName] = function(data) {
-                    cleanup();
-                    const translated = data && data.responseData ? data.responseData.translatedText : '';
-                    resolve(translated || chunk);
-                };
-
-                script.onerror = function() {
-                    cleanup();
-                    resolve(chunk);
-                };
-
-                script.src = 'https://translated.net' + encodeURIComponent(chunk) + '&langpair=ru|en&of=json&callback=' + cbName;
-                document.body.appendChild(script);
-            });
+            } catch (e) {
+                console.error('Ошибка перевода фрагмента:', e);
+            }
+            return chunk;
         }
 
         async function translateText(text) {
@@ -1056,12 +1040,8 @@
                 return text.replace(trimmed, translatedCache.get(trimmed));
             }
 
-            const chunks = splitIntoChunks(trimmed, 400);
-            const translatedParts = [];
-            for (const ch of chunks) {
-                const part = await translateViaJSONP(ch);
-                translatedParts.push(part);
-            }
+            const chunks = splitIntoChunks(trimmed, 450);
+            const translatedParts = await Promise.all(chunks.map(ch => translateChunk(ch)));
             const fullTranslated = translatedParts.join(' ');
             if (fullTranslated && fullTranslated !== trimmed) {
                 translatedCache.set(trimmed, fullTranslated);
@@ -1115,7 +1095,7 @@
             };
         }
 
-        // ЖЕЛЕЗОБЕТОННАЯ ПРОКРУТКА СТРЕЛКАМИ ПРИ ЛЮБОМ ФОКУСЕ И ПОСЛЕ ЛЮБЫХ КЛИКОВ
+        // ПРОКРУТКА СТРЕЛКАМИ ПРИ ЛЮБОМ ФОКУСЕ И ПОСЛЕ ЛЮБЫХ КЛИКОВ
         document.addEventListener('keydown', function(e) {
             const wrapper = document.getElementById('content-wrapper');
             if (!wrapper || wrapper.style.display === 'none') return;
