@@ -976,7 +976,7 @@
             });
         });
     </script>
-    <!-- НАДЕЖНЫЙ JSONP-ПЕРЕВОДЧИК RU / EN (БЕЗ CORS И БЛОКИРОВОК) -->
+    <!-- РАБОЧИЙ JSONP-ПЕРЕВОДЧИК RU / EN + ЖЕЛЕЗОБЕТОННЫЕ СТРЕЛКИ -->
     <script>
         let currentBookLang = 'ru';
         const originalTextCache = new WeakMap();
@@ -1001,7 +1001,6 @@
             return nodes;
         }
 
-        // Разбивка длинного абзаца на предложения до 400 символов
         function splitIntoChunks(text, maxLen = 400) {
             if (text.length <= maxLen) return [text];
             const sentences = text.match(/[^.!?]+[.!?]*\s*/g) || [text];
@@ -1019,7 +1018,6 @@
             return chunks;
         }
 
-        // Запрос через JSONP (обходит CORS-блокировки браузера)
         function translateViaJSONP(chunk) {
             return new Promise((resolve) => {
                 const cbName = '__tr_cb_' + (++jsonpCounter) + '_' + Date.now();
@@ -1027,7 +1025,7 @@
                 const timer = setTimeout(() => {
                     cleanup();
                     resolve(chunk);
-                }, 6000);
+                }, 7000);
 
                 function cleanup() {
                     clearTimeout(timer);
@@ -1098,24 +1096,12 @@
             if (btnEn) btnEn.textContent = 'EN';
         }
 
-        function returnScrollFocus() {
-            const wrapper = document.getElementById('content-wrapper');
-            if (wrapper && wrapper.style.display !== 'none') {
-                wrapper.setAttribute('tabindex', '-1');
-                wrapper.style.outline = 'none';
-                wrapper.focus({ preventScroll: true });
-            }
-        }
-
         function changeLanguage(lang) {
             currentBookLang = lang;
             const btnRu = document.getElementById('btn-ru');
             const btnEn = document.getElementById('btn-en');
             if (btnRu) btnRu.classList.toggle('active', lang === 'ru');
             if (btnEn) btnEn.classList.toggle('active', lang === 'en');
-            
-            // Возвращаем фокус в область текста, чтобы стрелки вверх/вниз продолжали работать!
-            returnScrollFocus();
             applyLanguage(lang);
         }
 
@@ -1128,6 +1114,28 @@
                 }
             };
         }
+
+        // ЖЕЛЕЗОБЕТОННАЯ ПРОКРУТКА СТРЕЛКАМИ ПРИ ЛЮБОМ ФОКУСЕ И ПОСЛЕ ЛЮБЫХ КЛИКОВ
+        document.addEventListener('keydown', function(e) {
+            const wrapper = document.getElementById('content-wrapper');
+            if (!wrapper || wrapper.style.display === 'none') return;
+            if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+
+            const step = 75;
+            if (e.key === 'ArrowDown') {
+                wrapper.scrollBy({ top: step, behavior: 'smooth' });
+                e.preventDefault();
+            } else if (e.key === 'ArrowUp') {
+                wrapper.scrollBy({ top: -step, behavior: 'smooth' });
+                e.preventDefault();
+            } else if (e.key === 'PageDown') {
+                wrapper.scrollBy({ top: wrapper.clientHeight * 0.85, behavior: 'smooth' });
+                e.preventDefault();
+            } else if (e.key === 'PageUp') {
+                wrapper.scrollBy({ top: -wrapper.clientHeight * 0.85, behavior: 'smooth' });
+                e.preventDefault();
+            }
+        });
     </script>
     <script src="https://google.com" async></script>
 </body>
