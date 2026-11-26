@@ -369,17 +369,82 @@
                 font-size: 0.85rem;
             }
         }
-    </style>
+		/* ================= ПЕРЕКЛЮЧАТЕЛЬ ЯЗЫКА RU / EN ================= */
+.lang-switcher {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10001;
+    display: flex;
+    gap: 6px;
+    background: rgba(9, 11, 14, 0.85);
+    padding: 5px;
+    border: 1.5px solid #1e3a5f;
+    border-radius: 6px;
+    backdrop-filter: blur(6px);
+}
+.lang-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: #9ca3af;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    font-weight: bold;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.25s ease;
+}
+.lang-btn:hover {
+    color: #38bdf8;
+}
+.lang-btn.active {
+    background-color: #38bdf8;
+    color: #05070a;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.5);
+}
+/* На смартфоне сдвигаем переключатель левее кнопки "Меню", чтобы не перекрывались */
+@media (max-width: 820px) {
+    .lang-switcher {
+        top: 12px;
+        right: 115px;
+        padding: 4px;
+    }
+    .lang-btn {
+        padding: 5px 9px;
+        font-size: 0.8rem;
+    }
+}
+/* СКРЫТИЕ СТАНДАРТНОЙ ПАНЕЛИ GOOGLE TRANSLATE */
+.goog-te-banner-frame.skiptranslate,
+.VIpgJd-ZVi9od-ORHb-OEVmcd,
+#goog-gt-tt,
+.goog-te-balloon-frame {
+    display: none !important;
+	}
+	body {
+    	top: 0px !important;
+	} 
+</style>
 </head>
 <body style="background-color: black; color: white;">
 
-    <!-- СЮЖЕТНАЯ ЗАСТАВКА «МОНОЛИТНЫЙ ТРЕХСТРОЧНЫЙ СИНТЕЗ» С КЛИКОМ ПО ЭКРАНУ -->
-    <div id="intro-overlay" onclick="initializeSystem()" style="cursor: pointer; background-color: black !important;">
-        <!-- Проверьте: на диске папка должна называться movies (или замените на video/intro_bg.mp4) -->
+    <!-- СЮЖЕТНАЯ ЗАСТАВКА «МОНОЛИТНЫЙ ТРЕХСТРОЧНЫЙ СИНТЕЗ» -->
+    <!-- КНОПКА ПЕРЕКЛЮЧЕНИЯ ЯЗЫКА В ПРАВОМ ВЕРХНЕМ УГЛУ (ДОСТУПНА И НА ОБЛОЖКЕ, И В КНИГЕ) -->
+    <div class="lang-switcher notranslate" translate="no">
+        <button id="btn-ru" class="lang-btn active" onclick="changeLanguage('ru')">RU</button>
+        <button id="btn-en" class="lang-btn" onclick="changeLanguage('en')">EN</button>
+    </div>
+
+    <!-- СКРЫТЫЙ КОНТЕЙНЕР ДЛЯ ДВИЖКА GOOGLE TRANSLATE -->
+    <div id="google_translate_element" style="display: none;"></div>
+
+    <!-- СЮЖЕТНАЯ ЗАСТАВКА «МОНОЛИТНЫЙ ТРЕХСТРОЧНЫЙ СИНТЕЗ» С КНОПКОЙ ВХОДА -->
+    <div id="intro-overlay" style="background-color: black !important;">
         <video id="intro-video" class="video-background" src="movies/intro_bg.mp4" autoplay muted playsinline></video>
         <div class="video-overlay-mask"></div>
         
-        <div id="intro-ui" style="opacity: 0; transition: opacity 1.5s ease; display: flex; flex-direction: column; align-items: center; z-index: 1; text-align: center; pointer-events: none; width: 100%; max-width: 1000px; padding: 0 20px; box-sizing: border-box;">
+        <div id="intro-ui" style="opacity: 0; transition: opacity 1.5s ease; display: flex; flex-direction: column; align-items: center; z-index: 1; text-align: center; pointer-events: auto; width: 100%; max-width: 1000px; padding: 0 20px; box-sizing: border-box;">
             
             <!-- АВТОР НАД НАЗВАНИЕМ -->
             <div style="font-family: 'Courier New', monospace; font-size: 1.3rem; font-weight: bold; color: #fbbf24; text-transform: uppercase; letter-spacing: 5px; margin-bottom: 22px; text-shadow: 0 0 15px rgba(251, 191, 36, 0.4);">
@@ -389,7 +454,6 @@
             <!-- СТРОКА 1 -->
             <div style="font-family: 'Courier New', monospace; font-size: 3.2rem; font-weight: bold; color: #38bdf8; text-transform: uppercase; letter-spacing: 6px; margin-bottom: 15px; text-shadow: 0 0 25px rgba(56, 189, 248, 0.6);">
                 Двоичный код Адама,
-
             </div>
             
             <!-- СТРОКА 2 -->
@@ -407,10 +471,10 @@
                 Научно-философский трактат • 2026
             </div>
             
-            <!-- НЕОНОВАЯ ПОДСКАЗКА ДЛЯ КЛИКА МЫШКОЙ -->
-            <div style="font-family: 'Courier New', monospace; font-size: 0.95rem; color: #22c55e; letter-spacing: 2px; text-transform: uppercase; animation: pulse 2s infinite;">
-                ( Щёлкните в любом месте для входа )
-            </div>
+            <!-- КРУПНАЯ КНОПКА ЗАПУСКА ЧТЕНИЯ -->
+            <button class="enter-btn" onclick="initializeSystem()" style="font-weight: bold; box-shadow: 0 0 18px rgba(56, 189, 248, 0.25);">
+                Начать чтение
+            </button>
         </div>
     </div>
 
@@ -917,5 +981,43 @@
             });
         });
     </script>
+    <!-- СКРИПТ АВТОМАТИЧЕСКОГО ПЕРЕВОДА RU / EN -->
+    <script>
+        function googleTranslateElementInit() {
+            new google.translate.TranslateElement({
+                pageLanguage: 'ru',
+                includedLanguages: 'en,ru',
+                autoDisplay: false
+            }, 'google_translate_element');
+        }
+
+        function changeLanguage(lang) {
+            // Переключаем подсветку активной кнопки
+            document.getElementById('btn-ru').classList.toggle('active', lang === 'ru');
+            document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+
+            if (lang === 'ru') {
+                // Сбрасываем куки перевода и возвращаем чистый оригинал
+                document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+                document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=." + location.hostname;
+                const select = document.querySelector('.goog-te-combo');
+                if (select) {
+                    select.value = 'ru';
+                    select.dispatchEvent(new Event('change'));
+                } else {
+                    location.reload();
+                }
+                return;
+            }
+
+            // Запускаем перевод на английский через скрытый виджет Google
+            const select = document.querySelector('.goog-te-combo');
+            if (select) {
+                select.value = lang;
+                select.dispatchEvent(new Event('change'));
+            }
+        }
+    </script>
+    <script src="https://google.com"></script>
 </body>
 </html>
