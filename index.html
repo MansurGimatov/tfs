@@ -109,9 +109,11 @@
             100% { opacity: 0.4; }
         }
 
-        /* ЛЕВОЕ БОКОВОЕ МЕНЮ */
+           /* ЛЕВОЕ БОКОВОЕ МЕНЮ */
         #sidebar {
             width: 300px;
+            height: 100vh;
+            flex-shrink: 0;
             background-color: #090b0e;
             border-right: 2px solid #1f2937;
             box-sizing: border-box;
@@ -120,7 +122,6 @@
             padding: 20px;
             overflow-y: auto;
         }
-
         #sidebar h3 {
             color: #ffffff;
             font-size: 1.1rem;
@@ -939,7 +940,10 @@
                     wrapper.focus({ preventScroll: true });
                 }
             }
-        }
+                // На смартфоне автоматически закрываем шторку оглавления после выбора раздела
+                const sidebar = document.getElementById('sidebar');
+                if (sidebar) sidebar.classList.remove('open');
+		}
         function initializeSystem() {
             if (!isVideoEnded) return; 
             const wrapper = document.getElementById('content-wrapper');
