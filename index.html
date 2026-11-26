@@ -981,52 +981,105 @@
             });
         });
     </script>
-    <!-- СКРИПТ АВТОМАТИЧЕСКОГО ПЕРЕВОДА RU / EN -->
+    <!-- ГИБРИДНЫЙ ПЕРЕВОДЧИК RU / EN (РАБОТАЕТ И С ВИДЖЕТОМ GOOGLE, И В ОБХОД БЛОКИРОВОК) -->
     <script>
+        let currentBookLang = 'ru';
+        const originalTextCache = new WeakMap();
+
         function googleTranslateElementInit() {
-            new google.translate.TranslateElement({
-                pageLanguage: 'ru',
-                includedLanguages: 'en,ru',
-                autoDisplay: false
-            }, 'google_translate_element');
+            if (window.google && google.translate) {
+                new google.translate.TranslateElement({
+                    pageLanguage: 'ru',
+                    includedLanguages: 'en,ru',
+                    autoDisplay: false
+                }, 'google_translate_element');
+            }
         }
 
-        function triggerGoogleTranslate(lang, attempts = 0) {
+        function getTranslatableNodes(root) {
+            const nodes = [];
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+                acceptNode: function(node) {
+                    if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+                    const parent = node.parentElement;
+                    if (!parent) return NodeFilter.FILTER_REJECT;
+                    const tag = parent.tagName;
+                    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') return NodeFilter.FILTER_REJECT;
+                    if (parent.closest('.notranslate')) return NodeFilter.FILTER_REJECT;
+                    return NodeFilter.FILTER_ACCEPT;
+                }
+            });
+            let n;
+            while ((n = walker.nextNode())) nodes.push(n);
+            return nodes;
+        }
+
+        async function translateChunk(text) {
+            try {
+                const url = 'https://googleapis.com' + encodeURIComponent(text);
+                const res = await fetch(url);
+                if (!res.ok) throw new Error('Network error');
+                const data = await res.json();
+                return data[0].map(item => item[0]).join('');
+            } catch (e) {
+                const fallbackUrl = 'https://translated.net' + encodeURIComponent(text.slice(0, 480)) + '&langpair=ru|en';
+                const res2 = await fetch(fallbackUrl);
+                const data2 = await res2.json();
+                return data2.responseData.translatedText || text;
+            }
+        }
+
+        async function translatePageFallback(targetLang) {
+            const nodes = getTranslatableNodes(document.body);
+            if (targetLang === 'ru') {
+                nodes.forEach(node => {
+                    if (originalTextCache.has(node)) {
+                        node.nodeValue = originalTextCache.get(node);
+                    }
+                });
+                return;
+            }
+
+            const btnEn = document.getElementById('btn-en');
+            const oldLabel = btnEn.textContent;
+            btnEn.textContent = 'EN...';
+
+            for (const node of nodes) {
+                if (!originalTextCache.has(node)) {
+                    originalTextCache.set(node, node.nodeValue);
+                }
+                const src = originalTextCache.get(node);
+                if (/[а-яА-ЯёЁ]/.test(src)) {
+                    node.nodeValue = await translateChunk(src);
+                }
+            }
+            btnEn.textContent = oldLabel;
+        }
+
+        function changeLanguage(lang) {
+            currentBookLang = lang;
+            document.getElementById('btn-ru').classList.toggle('active', lang === 'ru');
+            document.getElementById('btn-en').classList.toggle('active', lang === 'en');
+
             const select = document.querySelector('.goog-te-combo');
             if (select) {
                 select.value = lang;
                 select.dispatchEvent(new Event('change'));
-            } else if (attempts < 20) {
-                // Если Google еще подгружается, пробуем снова каждые 250 мс (до 5 секунд)
-                setTimeout(() => triggerGoogleTranslate(lang, attempts + 1), 250);
             } else {
-                alert('Переводчик Google не загрузился. Проверьте подключение к интернету или блокировщик рекламы.');
+                translatePageFallback(lang);
             }
         }
 
-        function changeLanguage(lang) {
-            document.getElementById('btn-ru').classList.toggle('active', lang === 'ru');
-            document.getElementById('btn-en').classList.toggle('active', lang === 'en');
-
-            if (lang === 'ru') {
-                // Если открыто на сайте — чистим куки; если локально с диска — переключаем через select или перезагружаем
-                document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-                if (location.hostname) {
-                    document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=." + location.hostname;
+        const originalLoadParagraph = window.loadParagraph;
+        if (typeof originalLoadParagraph === 'function') {
+            window.loadParagraph = function(id, btn) {
+                originalLoadParagraph(id, btn);
+                if (currentBookLang === 'en' && !document.querySelector('.goog-te-combo')) {
+                    setTimeout(() => translatePageFallback('en'), 50);
                 }
-                const select = document.querySelector('.goog-te-combo');
-                if (select && select.value !== 'ru') {
-                    select.value = 'ru';
-                    select.dispatchEvent(new Event('change'));
-                } else {
-                    location.reload();
-                }
-                return;
-            }
-
-            triggerGoogleTranslate(lang);
+            };
         }
     </script>
-    <script src="https://google.com"></script>
+    <script src="https://google.com" async></script>
 </body>
 </html>
