@@ -976,11 +976,12 @@
             });
         });
     </script>
-    <!-- БЫСТРЫЙ АВТОМАТИЧЕСКИЙ ПЕРЕВОДЧИК RU / EN (БЕЗ БЛОКИРОВОК И ЗАДЕРЖЕК) -->
+    <!-- НАДЕЖНЫЙ JSONP-ПЕРЕВОДЧИК RU / EN (БЕЗ CORS И БЛОКИРОВОК) -->
     <script>
         let currentBookLang = 'ru';
         const originalTextCache = new WeakMap();
         const translatedCache = new Map();
+        let jsonpCounter = 0;
 
         function getTranslatableNodes(root) {
             const nodes = [];
@@ -1000,6 +1001,56 @@
             return nodes;
         }
 
+        // Разбивка длинного абзаца на предложения до 400 символов
+        function splitIntoChunks(text, maxLen = 400) {
+            if (text.length <= maxLen) return [text];
+            const sentences = text.match(/[^.!?]+[.!?]*\s*/g) || [text];
+            const chunks = [];
+            let current = '';
+            for (const s of sentences) {
+                if ((current + s).length > maxLen && current) {
+                    chunks.push(current.trim());
+                    current = s;
+                } else {
+                    current += s;
+                }
+            }
+            if (current.trim()) chunks.push(current.trim());
+            return chunks;
+        }
+
+        // Запрос через JSONP (обходит CORS-блокировки браузера)
+        function translateViaJSONP(chunk) {
+            return new Promise((resolve) => {
+                const cbName = '__tr_cb_' + (++jsonpCounter) + '_' + Date.now();
+                const script = document.createElement('script');
+                const timer = setTimeout(() => {
+                    cleanup();
+                    resolve(chunk);
+                }, 6000);
+
+                function cleanup() {
+                    clearTimeout(timer);
+                    delete window[cbName];
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                }
+
+                window[cbName] = function(data) {
+                    cleanup();
+                    const translated = data && data.responseData ? data.responseData.translatedText : '';
+                    resolve(translated || chunk);
+                };
+
+                script.onerror = function() {
+                    cleanup();
+                    resolve(chunk);
+                };
+
+                script.src = 'https://translated.net' + encodeURIComponent(chunk) + '&langpair=ru|en&of=json&callback=' + cbName;
+                document.body.appendChild(script);
+            });
+        }
+
         async function translateText(text) {
             const trimmed = text.trim();
             if (!trimmed || !/[а-яА-ЯёЁ]/.test(trimmed)) return text;
@@ -1007,35 +1058,23 @@
                 return text.replace(trimmed, translatedCache.get(trimmed));
             }
 
-            try {
-                const url = 'https://googleapis.com' + encodeURIComponent(trimmed);
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = await res.json();
-                const firstBlock = Array.isArray(data) ? data.at(0) : null;
-                if (Array.isArray(firstBlock)) {
-                    const result = firstBlock.map(part => Array.isArray(part) ? part.at(0) : '').join('');
-                    if (result) {
-                        translatedCache.set(trimmed, result);
-                        return text.replace(trimmed, result);
-                    }
-                }
-            } catch (e) {
-                try {
-                    const fallbackUrl = 'https://translated.net' + encodeURIComponent(trimmed.slice(0, 480)) + '&langpair=ru|en';
-                    const res2 = await fetch(fallbackUrl);
-                    const data2 = await res2.json();
-                    const result2 = data2 && data2.responseData ? data2.responseData.translatedText : '';
-                    if (result2) {
-                        translatedCache.set(trimmed, result2);
-                        return text.replace(trimmed, result2);
-                    }
-                } catch (e2) {}
+            const chunks = splitIntoChunks(trimmed, 400);
+            const translatedParts = [];
+            for (const ch of chunks) {
+                const part = await translateViaJSONP(ch);
+                translatedParts.push(part);
+            }
+            const fullTranslated = translatedParts.join(' ');
+            if (fullTranslated && fullTranslated !== trimmed) {
+                translatedCache.set(trimmed, fullTranslated);
+                return text.replace(trimmed, fullTranslated);
             }
             return text;
         }
+
         async function applyLanguage(targetLang) {
             const nodes = getTranslatableNodes(document.body);
+
             if (targetLang === 'ru') {
                 nodes.forEach(node => {
                     if (originalTextCache.has(node)) {
@@ -1044,8 +1083,10 @@
                 });
                 return;
             }
+
             const btnEn = document.getElementById('btn-en');
             if (btnEn) btnEn.textContent = 'EN...';
+
             await Promise.all(nodes.map(async (node) => {
                 if (!originalTextCache.has(node)) {
                     originalTextCache.set(node, node.nodeValue);
@@ -1053,16 +1094,31 @@
                 const src = originalTextCache.get(node);
                 node.nodeValue = await translateText(src);
             }));
+
             if (btnEn) btnEn.textContent = 'EN';
         }
+
+        function returnScrollFocus() {
+            const wrapper = document.getElementById('content-wrapper');
+            if (wrapper && wrapper.style.display !== 'none') {
+                wrapper.setAttribute('tabindex', '-1');
+                wrapper.style.outline = 'none';
+                wrapper.focus({ preventScroll: true });
+            }
+        }
+
         function changeLanguage(lang) {
             currentBookLang = lang;
             const btnRu = document.getElementById('btn-ru');
             const btnEn = document.getElementById('btn-en');
             if (btnRu) btnRu.classList.toggle('active', lang === 'ru');
             if (btnEn) btnEn.classList.toggle('active', lang === 'en');
+            
+            // Возвращаем фокус в область текста, чтобы стрелки вверх/вниз продолжали работать!
+            returnScrollFocus();
             applyLanguage(lang);
         }
+
         const originalLoadParagraph = window.loadParagraph;
         if (typeof originalLoadParagraph === 'function') {
             window.loadParagraph = function(id, btn) {
