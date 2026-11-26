@@ -976,11 +976,13 @@
             });
         });
     </script>
-    <!-- КАСКАДНЫЙ ПЕРЕВОДЧИК RU / EN (3 ДВИЖКА + BASE64 ЗАЩИТА ОТ ИСКАЖЕНИЯ ПРИ КОПИРОВАНИИ) -->
+    <!-- ФИНАЛЬНЫЙ КАСКАДНЫЙ ПЕРЕВОДЧИК RU / EN (АВТО-ВЫБОР БЫСТРОГО ЗЕРКАЛА + БЕЗЛИМИТ + СТРЕЛКИ) -->
     <script>
         let currentBookLang = 'ru';
         const originalTextCache = new WeakMap();
         const translatedCache = new Map();
+        let isTranslating = false;
+        let preferredEngineIndex = -1;
 
         function getTranslatableNodes(root) {
             const nodes = [];
@@ -1017,41 +1019,89 @@
             return chunks;
         }
 
+        function isValidTranslation(res, src) {
+            if (!res || typeof res !== 'string') return false;
+            const upper = res.toUpperCase();
+            if (upper.includes('MYMEMORY WARNING') || upper.includes('QUOTA') || upper.includes('TOO MANY REQUESTS')) {
+                return false;
+            }
+            return res.trim() !== src.trim();
+        }
+
+        async function fetchWithTimeout(url, ms = 3500) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), ms);
+            try {
+                return await fetch(url, { signal: controller.signal });
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        // Список независимых движков перевода (от безлимитных до резервных)
+        const translationEngines = [
+            // 0. Прямой Google API (мгновенно работает для читателей с Запада)
+            async (enc) => {
+                const u = atob('aHR0cHM6Ly90cmFuc2xhdGUuZ29vZ2xlYXBpcy5jb20vdHJhbnNsYXRlX2Evc2luZ2xlP2NsaWVudD1ndHgmc2w9cnUmdGw9ZW4mZHQ9dCZxPQ==') + enc;
+                const r = await fetchWithTimeout(u);
+                if (!r.ok) return '';
+                const d = await r.json();
+                const block = Array.isArray(d) ? d.at(0) : null;
+                return Array.isArray(block) ? block.map(p => Array.isArray(p) ? p.at(0) : '').join('') : '';
+            },
+            // 1. Зеркало Lingva #1 (безлимитный Google Translate)
+            async (enc) => {
+                const r = await fetchWithTimeout(atob('aHR0cHM6Ly9saW5ndmEubWwvYXBpL3YxL3J1L2VuLw==') + enc);
+                if (!r.ok) return '';
+                const d = await r.json();
+                return d && d.translation ? d.translation : '';
+            },
+            // 2. Зеркало Lingva #2 (безлимитный Google Translate)
+            async (enc) => {
+                const r = await fetchWithTimeout(atob('aHR0cHM6Ly9saW5ndmEudGhlZGF2aWRkb2UuY29tL2FwaS92MS9ydS9lbi8=') + enc);
+                if (!r.ok) return '';
+                const d = await r.json();
+                return d && d.translation ? d.translation : '';
+            },
+            // 3. Зеркало Lingva #3 (безлимитный Google Translate)
+            async (enc) => {
+                const r = await fetchWithTimeout(atob('aHR0cHM6Ly90cmFuc2xhdGUucGxhdXNpYmlsaXR5LmNsb3VkL2FwaS92MS9ydS9lbi8=') + enc);
+                if (!r.ok) return '';
+                const d = await r.json();
+                return d && d.translation ? d.translation : '';
+            },
+            // 4. MyMemory с расширенным лимитом 50 000 символов/сутки на читателя
+            async (enc) => {
+                const u = atob('aHR0cHM6Ly9hcGkubXltZW1vcnkudHJhbnNsYXRlZC5uZXQvZ2V0P3E9') + enc + '&langpair=ru|en&de=tfs.book.reader@gmail.com';
+                const r = await fetchWithTimeout(u, 5000);
+                if (!r.ok) return '';
+                const d = await r.json();
+                return d && d.responseData ? d.responseData.translatedText : '';
+            }
+        ];
+
         async function translateChunk(chunk) {
-            // 1. Попытка через прямой шлюз Google API (адрес зашит в Base64, не режется при копировании)
-            try {
-                const u1 = atob('aHR0cHM6Ly90cmFuc2xhdGUuZ29vZ2xlYXBpcy5jb20vdHJhbnNsYXRlX2Evc2luZ2xlP2NsaWVudD1ndHgmc2w9cnUmdGw9ZW4mZHQ9dCZxPQ==') + encodeURIComponent(chunk);
-                const r1 = await fetch(u1);
-                if (r1.ok) {
-                    const d1 = await r1.json();
-                    const block = Array.isArray(d1) ? d1.at(0) : null;
-                    if (Array.isArray(block)) {
-                        const res1 = block.map(p => Array.isArray(p) ? p.at(0) : '').join('');
-                        if (res1) return res1;
+            const enc = encodeURIComponent(chunk);
+
+            // Сначала пробуем уже найденный быстрый движок
+            if (preferredEngineIndex >= 0) {
+                try {
+                    const fastRes = await translationEngines.at(preferredEngineIndex)(enc);
+                    if (isValidTranslation(fastRes, chunk)) return fastRes;
+                } catch (e) {}
+                preferredEngineIndex = -1; // Если вдруг перестал отвечать, ищем другой
+            }
+
+            // Перебираем движки и запоминаем первый сработавший
+            for (let i = 0; i < translationEngines.length; i++) {
+                try {
+                    const res = await translationEngines.at(i)(enc);
+                    if (isValidTranslation(res, chunk)) {
+                        preferredEngineIndex = i;
+                        return res;
                     }
-                }
-            } catch (e1) {}
-
-            // 2. Попытка через Lingva (открытое зеркало Google Translate)
-            try {
-                const u2 = atob('aHR0cHM6Ly9saW5ndmEubWwvYXBpL3YxL3J1L2VuLw==') + encodeURIComponent(chunk);
-                const r2 = await fetch(u2);
-                if (r2.ok) {
-                    const d2 = await r2.json();
-                    if (d2 && d2.translation) return d2.translation;
-                }
-            } catch (e2) {}
-
-            // 3. Попытка через MyMemory
-            try {
-                const u3 = atob('aHR0cHM6Ly9hcGkubXltZW1vcnkudHJhbnNsYXRlZC5uZXQvZ2V0P3E9') + encodeURIComponent(chunk) + '&langpair=ru|en';
-                const r3 = await fetch(u3);
-                if (r3.ok) {
-                    const d3 = await r3.json();
-                    const t3 = d3 && d3.responseData ? d3.responseData.translatedText : '';
-                    if (t3 && t3.indexOf('MYMEMORY WARNING') === -1) return t3;
-                }
-            } catch (e3) {}
+                } catch (e) {}
+            }
 
             return chunk;
         }
@@ -1064,9 +1114,12 @@
             }
 
             const chunks = splitIntoChunks(trimmed, 450);
-            const translatedParts = await Promise.all(chunks.map(ch => translateChunk(ch)));
+            const translatedParts = [];
+            for (const ch of chunks) {
+                translatedParts.push(await translateChunk(ch));
+            }
             const fullTranslated = translatedParts.join(' ');
-            if (fullTranslated && fullTranslated !== trimmed) {
+            if (isValidTranslation(fullTranslated, trimmed)) {
                 translatedCache.set(trimmed, fullTranslated);
                 return text.replace(trimmed, fullTranslated);
             }
@@ -1074,6 +1127,7 @@
         }
 
         async function applyLanguage(targetLang) {
+            if (isTranslating) return;
             const nodes = getTranslatableNodes(document.body);
 
             if (targetLang === 'ru') {
@@ -1085,18 +1139,24 @@
                 return;
             }
 
+            isTranslating = true;
             const btnEn = document.getElementById('btn-en');
             if (btnEn) btnEn.textContent = 'EN...';
 
-            await Promise.all(nodes.map(async (node) => {
-                if (!originalTextCache.has(node)) {
-                    originalTextCache.set(node, node.nodeValue);
-                }
-                const src = originalTextCache.get(node);
-                node.nodeValue = await translateText(src);
-            }));
-
-            if (btnEn) btnEn.textContent = 'EN';
+            try {
+                await Promise.all(nodes.map(async (node) => {
+                    if (!originalTextCache.has(node)) {
+                        originalTextCache.set(node, node.nodeValue);
+                    }
+                    const src = originalTextCache.get(node);
+                    if (/[а-яА-ЯёЁ]/.test(src)) {
+                        node.nodeValue = await translateText(src);
+                    }
+                }));
+            } finally {
+                isTranslating = false;
+                if (btnEn) btnEn.textContent = 'EN';
+            }
         }
 
         function changeLanguage(lang) {
@@ -1108,15 +1168,18 @@
             applyLanguage(lang);
         }
 
-        const originalLoadParagraph = window.loadParagraph;
-        if (typeof originalLoadParagraph === 'function') {
-            window.loadParagraph = function(id, btn) {
-                originalLoadParagraph(id, btn);
-                if (currentBookLang === 'en') {
-                    applyLanguage('en');
-                }
-            };
-        }
+        // Автоматический перевод при любой смене текста главы во всех браузерах
+        window.addEventListener('DOMContentLoaded', function() {
+            const mainContent = document.getElementById('main-content');
+            if (mainContent) {
+                const observer = new MutationObserver(function() {
+                    if (currentBookLang === 'en' && !isTranslating) {
+                        applyLanguage('en');
+                    }
+                });
+                observer.observe(mainContent, { childList: true });
+            }
+        });
 
         // ПРОКРУТКА СТРЕЛКАМИ ПРИ ЛЮБОМ ФОКУСЕ И ПОСЛЕ ЛЮБЫХ КЛИКОВ
         document.addEventListener('keydown', function(e) {
