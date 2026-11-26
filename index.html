@@ -437,7 +437,7 @@
     </div>
 
     <!-- СКРЫТЫЙ КОНТЕЙНЕР ДЛЯ ДВИЖКА GOOGLE TRANSLATE -->
-    <div id="google_translate_element" style="display: none;"></div>
+    <div id="google_translate_element" style="position: fixed; top: -9999px; left: -9999px; visibility: hidden;"></div>
 
     <!-- СЮЖЕТНАЯ ЗАСТАВКА «МОНОЛИТНЫЙ ТРЕХСТРОЧНЫЙ СИНТЕЗ» С КНОПКОЙ ВХОДА -->
     <div id="intro-overlay" style="background-color: black !important;">
@@ -991,17 +991,31 @@
             }, 'google_translate_element');
         }
 
+        function triggerGoogleTranslate(lang, attempts = 0) {
+            const select = document.querySelector('.goog-te-combo');
+            if (select) {
+                select.value = lang;
+                select.dispatchEvent(new Event('change'));
+            } else if (attempts < 20) {
+                // Если Google еще подгружается, пробуем снова каждые 250 мс (до 5 секунд)
+                setTimeout(() => triggerGoogleTranslate(lang, attempts + 1), 250);
+            } else {
+                alert('Переводчик Google не загрузился. Проверьте подключение к интернету или блокировщик рекламы.');
+            }
+        }
+
         function changeLanguage(lang) {
-            // Переключаем подсветку активной кнопки
             document.getElementById('btn-ru').classList.toggle('active', lang === 'ru');
             document.getElementById('btn-en').classList.toggle('active', lang === 'en');
 
             if (lang === 'ru') {
-                // Сбрасываем куки перевода и возвращаем чистый оригинал
+                // Если открыто на сайте — чистим куки; если локально с диска — переключаем через select или перезагружаем
                 document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-                document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=." + location.hostname;
+                if (location.hostname) {
+                    document.cookie = "googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=." + location.hostname;
+                }
                 const select = document.querySelector('.goog-te-combo');
-                if (select) {
+                if (select && select.value !== 'ru') {
                     select.value = 'ru';
                     select.dispatchEvent(new Event('change'));
                 } else {
@@ -1010,12 +1024,7 @@
                 return;
             }
 
-            // Запускаем перевод на английский через скрытый виджет Google
-            const select = document.querySelector('.goog-te-combo');
-            if (select) {
-                select.value = lang;
-                select.dispatchEvent(new Event('change'));
-            }
+            triggerGoogleTranslate(lang);
         }
     </script>
     <script src="https://google.com"></script>
