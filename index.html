@@ -109,7 +109,7 @@
             100% { opacity: 0.4; }
         }
 
-           /* ЛЕВОЕ БОКОВОЕ МЕНЮ */
+        /* ЛЕВОЕ БОКОВОЕ МЕНЮ */
         #sidebar {
             width: 300px;
             height: 100vh;
@@ -117,8 +117,7 @@
             background-color: #090b0e;
             border-right: 2px solid #1f2937;
             box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
+            display: block;
             padding: 20px;
             overflow-y: auto;
         }
@@ -441,9 +440,6 @@
         <button id="btn-ru" class="lang-btn active" onclick="changeLanguage('ru')">RU</button>
         <button id="btn-en" class="lang-btn" onclick="changeLanguage('en')">EN</button>
     </div>
-
-    <!-- СКРЫТЫЙ КОНТЕЙНЕР ДЛЯ ДВИЖКА GOOGLE TRANSLATE -->
-    <div id="google_translate_element" style="position: fixed; top: -9999px; left: -9999px; visibility: hidden;"></div>
 
     <!-- СЮЖЕТНАЯ ЗАСТАВКА «МОНОЛИТНЫЙ ТРЕХСТРОЧНЫЙ СИНТЕЗ» С КНОПКОЙ ВХОДА -->
     <div id="intro-overlay" style="background-color: black !important;">
