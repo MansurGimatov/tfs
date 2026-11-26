@@ -100,6 +100,7 @@
             opacity: 0;
             pointer-events: none;
             transform: scale(1.03);
+			display: none !important;
         }
 
         /* АНИМАЦИЯ ПУЛЬСАЦИИ ПОДСКАЗКИ ВХОДА */
@@ -948,11 +949,19 @@
                 wrapper.setAttribute('tabindex', '-1');
                 wrapper.style.outline = 'none';
             }
-            document.getElementById('intro-overlay').classList.add('system-ready');
+            const vid = document.getElementById('intro-video');
+            if (vid) {
+                vid.pause();
+                vid.style.display = 'none';
+            }
+            const overlay = document.getElementById('intro-overlay');
+            if (overlay) {
+                overlay.classList.add('system-ready');
+                overlay.style.display = 'none';
+            }
             loadParagraph('pbeg');
             if (wrapper) wrapper.focus({ preventScroll: true });
         }
-
         // ПЕРВИЧНЫЙ СИСТЕМНЫЙ ТАКТ: жесткий файрвол от промигивания текста
         window.addEventListener('DOMContentLoaded', () => {
             const wrapper = document.getElementById('content-wrapper');
