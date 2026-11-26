@@ -976,7 +976,7 @@
             });
         });
     </script>
-    <!-- РАБОЧИЙ ПЕРЕВОДЧИК RU / EN (ЗАЩИЩЕН ОТ ОБРЕЗАНИЯ ССЫЛОК ПРИ КОПИРОВАНИИ) -->
+    <!-- КАСКАДНЫЙ ПЕРЕВОДЧИК RU / EN (3 ДВИЖКА + BASE64 ЗАЩИТА ОТ ИСКАЖЕНИЯ ПРИ КОПИРОВАНИИ) -->
     <script>
         let currentBookLang = 'ru';
         const originalTextCache = new WeakMap();
@@ -1018,18 +1018,41 @@
         }
 
         async function translateChunk(chunk) {
-            // Собираем адрес по частям, чтобы браузер/чат не обрезал URL при копировании
-            const base = ['https:', '', 'api.mymemory.translated.net', 'get'].join('/');
-            const query = '?q=' + encodeURIComponent(chunk) + '&langpair=ru|en';
+            // 1. Попытка через прямой шлюз Google API (адрес зашит в Base64, не режется при копировании)
             try {
-                const res = await fetch(base + query);
-                const data = await res.json();
-                if (data && data.responseData && data.responseData.translatedText) {
-                    return data.responseData.translatedText;
+                const u1 = atob('aHR0cHM6Ly90cmFuc2xhdGUuZ29vZ2xlYXBpcy5jb20vdHJhbnNsYXRlX2Evc2luZ2xlP2NsaWVudD1ndHgmc2w9cnUmdGw9ZW4mZHQ9dCZxPQ==') + encodeURIComponent(chunk);
+                const r1 = await fetch(u1);
+                if (r1.ok) {
+                    const d1 = await r1.json();
+                    const block = Array.isArray(d1) ? d1.at(0) : null;
+                    if (Array.isArray(block)) {
+                        const res1 = block.map(p => Array.isArray(p) ? p.at(0) : '').join('');
+                        if (res1) return res1;
+                    }
                 }
-            } catch (e) {
-                console.error('Ошибка перевода фрагмента:', e);
-            }
+            } catch (e1) {}
+
+            // 2. Попытка через Lingva (открытое зеркало Google Translate)
+            try {
+                const u2 = atob('aHR0cHM6Ly9saW5ndmEubWwvYXBpL3YxL3J1L2VuLw==') + encodeURIComponent(chunk);
+                const r2 = await fetch(u2);
+                if (r2.ok) {
+                    const d2 = await r2.json();
+                    if (d2 && d2.translation) return d2.translation;
+                }
+            } catch (e2) {}
+
+            // 3. Попытка через MyMemory
+            try {
+                const u3 = atob('aHR0cHM6Ly9hcGkubXltZW1vcnkudHJhbnNsYXRlZC5uZXQvZ2V0P3E9') + encodeURIComponent(chunk) + '&langpair=ru|en';
+                const r3 = await fetch(u3);
+                if (r3.ok) {
+                    const d3 = await r3.json();
+                    const t3 = d3 && d3.responseData ? d3.responseData.translatedText : '';
+                    if (t3 && t3.indexOf('MYMEMORY WARNING') === -1) return t3;
+                }
+            } catch (e3) {}
+
             return chunk;
         }
 
